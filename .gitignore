@@ -1,0 +1,10 @@
+# Credentials
+service-account.json
+.env
+
+# Dependencies
+node_modules/
+
+# Build files
+dist/
+build/

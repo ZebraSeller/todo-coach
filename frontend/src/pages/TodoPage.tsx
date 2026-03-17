@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { mockAddTodo, mockDeleteTodo, mockGetTodos, mockSummarize, mockToggleTodo } from '../services/mockApi'
+import { addTodo, clearSession, deleteTodo, fetchTodos, getSessionUsername, summarize, toggleTodo } from '../services/api'
 
 export interface TodoItem {
   todoID: string
@@ -14,12 +14,40 @@ type GroupedTodos = Record<string, TodoItem[]>
 
 export const TodoPage = () => {
   const navigate = useNavigate()
-  const [todos, setTodos] = useState<TodoItem[]>(mockGetTodos())
+  const [todos, setTodos] = useState<TodoItem[]>([])
   const [newTask, setNewTask] = useState('')
   const [newTaskDate, setNewTaskDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
   const [summaryDate, setSummaryDate] = useState<string | null>(null)
   const [summaryText, setSummaryText] = useState<string | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [loadingTodos, setLoadingTodos] = useState(true)
+  const [todosError, setTodosError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const username = getSessionUsername()
+    if (!username) {
+      navigate('/login', { replace: true })
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      setLoadingTodos(true)
+      setTodosError(null)
+      try {
+        const remote = await fetchTodos()
+        if (!cancelled) setTodos(remote)
+      } catch (e) {
+        if (!cancelled) setTodosError(e instanceof Error ? e.message : 'Failed to load todos')
+      } finally {
+        if (!cancelled) setLoadingTodos(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [navigate])
 
   const groups: GroupedTodos = useMemo(() => {
     return todos.reduce((acc, t) => {
@@ -31,23 +59,23 @@ export const TodoPage = () => {
 
   const sortedDates = Object.keys(groups).sort()
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newTask.trim()) return
-    const created = mockAddTodo({ taskName: newTask.trim(), date: newTaskDate })
+    const created = await addTodo({ taskName: newTask.trim(), date: newTaskDate })
     setTodos((prev) => [...prev, created])
     setNewTask('')
   }
 
-  const handleDelete = (id: string) => {
-    mockDeleteTodo(id)
-    setTodos((prev) => prev.filter((t) => t.todoID !== id))
+  const handleDelete = async (id: string) => {
+    const next = await deleteTodo(id)
+    setTodos(next)
   }
 
-  const handleToggleDone = (id: string) => {
-    mockToggleTodo(id)
-    setTodos((prev) =>
-      prev.map((t) => (t.todoID === id ? { ...t, completed: !t.completed } : t)),
-    )
+  const handleToggleDone = async (id: string) => {
+    const target = todos.find((t) => t.todoID === id)
+    const nextCompleted = !(target?.completed ?? false)
+    const next = await toggleTodo(id, nextCompleted)
+    setTodos(next)
   }
 
   const openSummary = async (date: string) => {
@@ -55,8 +83,8 @@ export const TodoPage = () => {
     setSummaryText(null)
     setSummaryLoading(true)
     try {
-      const summary = await mockSummarize(groups[date])
-      setSummaryText(summary)
+      const result = await summarize(groups[date])
+      setSummaryText(result.summary)
     } finally {
       setSummaryLoading(false)
     }
@@ -71,7 +99,7 @@ export const TodoPage = () => {
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-slate-50">
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-[#a87ffa]">
             Your todos
           </h1>
           <p className="text-xs md:text-sm text-slate-400">
@@ -80,11 +108,14 @@ export const TodoPage = () => {
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden md:inline-flex rounded-full bg-slate-900/80 border border-slate-800 px-3 py-1 text-[11px] text-slate-300">
-            Frontend prototype · Mock API
+            Frontend prototype · Real Firestore Database
           </span>
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={() => navigate('/login')}
+            onClick={() => {
+              clearSession()
+              navigate('/login', { replace: true })
+            }}
             className="inline-flex items-center justify-center rounded-xl bg-slate-800/90 px-3 py-1.5 text-[11px] font-medium text-slate-200 hover:bg-slate-700 transition-transform transition-colors"
           >
             Logout
@@ -127,6 +158,18 @@ export const TodoPage = () => {
       </div>
 
       <div className="space-y-4 max-h-[480px] overflow-y-auto pr-1">
+        {loadingTodos && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 px-4 py-6 text-center text-sm text-slate-400">
+            Loading your tasks…
+          </div>
+        )}
+
+        {!loadingTodos && todosError && (
+          <div className="rounded-2xl border border-red-500/50 bg-red-950/40 px-4 py-3 text-sm text-red-100">
+            {todosError}
+          </div>
+        )}
+
         {sortedDates.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-700/80 bg-slate-900/40 px-4 py-6 text-center text-sm text-slate-400">
             No tasks yet. Add your first task above.
@@ -182,7 +225,7 @@ export const TodoPage = () => {
                   </span>
                   <div className="flex items-center gap-2">
                     <motion.button
-                      whileTap={{ scale: 0.95 }}
+                      whileTap={{ scale: 0.8 }}
                       onClick={() => handleToggleDone(todo.todoID)}
                       className={
                         'inline-flex items-center justify-center rounded-lg px-2 py-1 text-[11px] font-medium transition-transform transition-colors ' +

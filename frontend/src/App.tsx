@@ -6,7 +6,7 @@ function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-4">
-        <div className="w-full max-w-5xl rounded-2xl bg-slate-900/60 border border-slate-800 shadow-2xl shadow-indigo-900/40 backdrop-blur-md">
+        <div className="w-full max-w-5xl rounded-2xl bg-slate-900/60 border border-slate-800 shadow-2xl shadow-indigo-900/100 backdrop-blur-md">
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<AuthPage mode="login" />} />

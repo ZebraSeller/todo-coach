@@ -2,7 +2,7 @@
 An Todo List App with AI Assistant
 
 ## Commands
-To Run this app, use the following command:
+To Run this app, first navigate to the frontend folder, then use the following command:
 ```
 npm run dev
 ```

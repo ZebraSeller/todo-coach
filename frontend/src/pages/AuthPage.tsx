@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { setSessionUsername } from '../services/api'
+import { login, register, setSessionUsername } from '../services/api'
 
 type AuthMode = 'login' | 'register'
 
@@ -24,17 +24,21 @@ export const AuthPage = ({ mode }: AuthPageProps) => {
     setLoading(true)
 
     try {
-      // Backend auth will be wired later.
-      // For now we keep a lightweight client-side "session" using username,
-      // so the app can read/write todos via the backend (Firestore).
-      void password
+      // call the backend
+      if (isLogin) {
+        await login(username, password)
+      } else {
+        await register(username, password)
+      }
+  
       setSessionUsername(username)
       navigate('/app')
     } catch (err) {
+      // if the backend returns 401 (Wrong password) or 404 (User not found), catch the error
       if (err instanceof Error) {
         setError(err.message)
       } else {
-        setError('Something went wrong')
+        setError('Invalid username or password')
       }
     } finally {
       setLoading(false)
@@ -42,7 +46,7 @@ export const AuthPage = ({ mode }: AuthPageProps) => {
   }
 
   return (
-    <div className="flex flex-col md:flex-row"> {/* md: is for desktop */}
+    <div className="flex flex-col md:flex-row"> {/* md: is for desktop, where  */}
       <div className="flex-1 px-8 py-10 md:px-10 md:py-12 border-b md:border-b-0 md:border-r border-slate-800 flex flex-col justify-center gap-6 bg-gradient-to-b from-slate-900/80 via-slate-950 to-slate-950 rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none">
         <p className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-indigo-300/80">
           <span className="h-px w-6 bg-indigo-500/60 rounded-full" />

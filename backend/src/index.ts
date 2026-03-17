@@ -9,8 +9,26 @@ import { randomUUID } from 'crypto'
 import bcrypt from 'bcryptjs'
 import { getDb } from './firebase'
 import type { TodoItem, UserDoc } from './types'
+import { VertexAI } from '@google-cloud/vertexai'
 
 const app = express()
+
+// Initialize Vertex AI (Gemini)
+const gcpProject = process.env.GOOGLE_CLOUD_PROJECT
+if (!gcpProject) {
+  // eslint-disable-next-line no-console
+  console.warn('GOOGLE_CLOUD_PROJECT is not set. /api/summarize will fail until it is configured.')
+}
+
+const vertexAI = new VertexAI({
+  project: gcpProject || '',
+  location: process.env.VERTEX_LOCATION || 'us-central1',
+})
+
+const generativeModel = vertexAI.getGenerativeModel({
+  // Vertex requires a versioned publisher model name in many projects, e.g. gemini-1.5-flash-001.
+  model: process.env.VERTEX_MODEL || 'gemini-2.5-flash-lite',
+})
 
 app.use(cors())
 app.use(express.json({ limit: '1mb' }))
@@ -103,7 +121,7 @@ app.get('/api/todos', async (req, res) => {
   return res.status(200).json({ todos })
 })
 
-app.post('/api/todos', async (req, res) => {
+app.post('/api/todos', async (req, res) => { // Endpoint for adding, deleting, and toggling todos
   const username = getUsernameFromReq(req) || (typeof req.body?.username === 'string' ? req.body.username : null)
   if (!username) {
     return res.status(400).json({ error: 'Missing username. Provide body.username, ?username=..., or x-username.' })
@@ -171,13 +189,79 @@ app.post('/api/todos', async (req, res) => {
   return res.status(201).json({ todo })
 })
 
-app.post('/api/summarize', async (_req, res) => {
-  // TODO: wire to Vertex AI Gemini 1.5 Flash later
-  return res.status(200).json({
-    summary:
-      'Mock summary: Focus on one deep-work task first, then batch similar items. Keep the last task as a quick win to end the day strong.',
-    suggestedOrder: ['Deep work first', 'Batch similar tasks', 'Quick win last'],
-  })
+app.post('/api/summarize', async (req, res) => {
+  const todos: unknown = req.body?.todos ?? req.body?.tasks
+
+  if (!Array.isArray(todos)) {
+    return res.status(400).json({ error: 'Todos array is required' })
+  }
+
+  const safeTodos = todos
+    .filter((t) => t && typeof t === 'object')
+    .map((t: any) => ({
+      taskName: typeof t.taskName === 'string' ? t.taskName : '',
+      completed: Boolean(t.completed),
+    }))
+    .filter((t) => t.taskName.trim().length > 0)
+
+  if (safeTodos.length === 0) {
+    return res.status(200).json({ summary: "No tasks found for this date. Add a task, then try summarizing again." })
+  }
+
+  const todoText = safeTodos
+    .map((t) => `- ${t.taskName} (${t.completed ? 'Done' : 'Pending'})`)
+    .join('\n')
+
+  const prompt = [
+    'You are a professional productivity coach.',
+    "Here is a user's task list for a single day:",
+    todoText,
+    '',
+    'Return plain text with this format:',
+    'Summary: <2 encouraging sentences>',
+    'Tips:',
+    '- <tip 1>',
+    '- <tip 2>',
+    '- <tip 3>',
+  ].join('\n')
+
+  try {
+    const result = await generativeModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 512,
+      },
+    })
+
+    const text =
+      result.response?.candidates?.[0]?.content?.parts
+        ?.map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
+        .join('') || ''
+
+    if (!text.trim()) {
+      return res.status(502).json({ error: 'Vertex AI returned an empty response' })
+    }
+
+    return res.status(200).json({ summary: text.trim() })
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Gemini Error:', error)
+    const message =
+      error && typeof (error as any).message === 'string'
+        ? (error as any).message
+        : 'Unknown error'
+
+    return res.status(500).json({
+      error:
+        'Failed to generate summary. Verify Vertex AI is enabled, your service account has permissions, and VERTEX_MODEL/VERTEX_LOCATION are correct.',
+      details: {
+        vertexModel: process.env.VERTEX_MODEL || 'gemini-1.5-flash-001',
+        vertexLocation: process.env.VERTEX_LOCATION || 'us-central1',
+        message,
+      },
+    })
+  }
 })
 
 // this is the port that the backend will listen on keeping the server awake.

@@ -77,7 +77,7 @@ export async function summarize(tasks: TodoItem[]): Promise<{ summary: string; s
       'content-type': 'application/json',
       ...authHeaders(),
     },
-    body: JSON.stringify({ tasks }),
+    body: JSON.stringify({ todos: tasks }),
   })
   const data = await parseJsonOrThrow(res)
   return { summary: String(data.summary || ''), suggestedOrder: Array.isArray(data.suggestedOrder) ? data.suggestedOrder : undefined }

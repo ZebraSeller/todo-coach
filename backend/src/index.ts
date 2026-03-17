@@ -26,11 +26,13 @@ const vertexAI = new VertexAI({
 })
 
 const generativeModel = vertexAI.getGenerativeModel({
-  // Vertex requires a versioned publisher model name in many projects, e.g. gemini-1.5-flash-001.
+  //  gemini-1.5-flash no longer works.
   model: process.env.VERTEX_MODEL || 'gemini-2.5-flash-lite',
 })
 
-app.use(cors())
+app.use(cors({
+  origin: ['http://localhost:5173'] 
+}))
 app.use(express.json({ limit: '1mb' }))
 
 app.get('/', (_req, res) => {
@@ -266,8 +268,8 @@ app.post('/api/summarize', async (req, res) => {
 
 // this is the port that the backend will listen on keeping the server awake.
 const port = Number(process.env.PORT) || 8080
-app.listen(port, () => {
-  // eslint-disable-next-line no-console
-  console.log(`Backend listening on :${port}`)
-})
+// Explicitly listen on 0.0.0.0 for cloud run test
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Backend listening on port: ${port}`)
+});
 

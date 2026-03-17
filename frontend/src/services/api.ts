@@ -1,6 +1,6 @@
 import type { TodoItem } from '../pages/TodoPage'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://backend-290130875077.us-central1.run.app'
 
 function getUsername(): string {
   const u = localStorage.getItem('tc_username') || ''
